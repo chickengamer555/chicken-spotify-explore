@@ -41,6 +41,14 @@ export const searchTrack = async (token, q, limit = 24) => {
   return res.data.tracks.items;
 };
 
+export class RateLimitedError extends Error {
+  constructor(retryAfter) {
+    super(`Rate limited (retry-after: ${retryAfter}s)`);
+    this.name = 'RateLimitedError';
+    this.retryAfter = retryAfter;
+  }
+}
+
 let firstSearchErrorLogged = false;
 const logFirstSearchError = (where, e) => {
   if (firstSearchErrorLogged) return;
@@ -51,8 +59,12 @@ const logFirstSearchError = (where, e) => {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+const MAX_RETRIES = 2;
+const MAX_RETRY_WAIT_S = 5;
+
 const searchWithRetry = async (token, params, where) => {
-  for (let attempt = 0; attempt < 2; attempt++) {
+  let lastRetryAfter = 0;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       const res = await axios.get(`${BASE}/search`, {
         headers: authHeader(token),
@@ -61,10 +73,15 @@ const searchWithRetry = async (token, params, where) => {
       return res.data.tracks.items[0] || null;
     } catch (e) {
       const status = e && e.response && e.response.status;
-      if (status === 429 && attempt === 0) {
+      if (status === 429 && attempt < MAX_RETRIES) {
         const retryAfter = parseInt((e.response.headers && e.response.headers['retry-after']) || '2', 10);
-        await sleep(Math.min(retryAfter, 8) * 1000);
+        lastRetryAfter = retryAfter;
+        await sleep(Math.min(retryAfter, MAX_RETRY_WAIT_S) * 1000);
         continue;
+      }
+      if (status === 429) {
+        // Exhausted retries — throw typed error so the pipeline aborts
+        throw new RateLimitedError(lastRetryAfter || 30);
       }
       logFirstSearchError(where, e);
       return null;

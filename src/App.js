@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import './content/css/App.scss';
 import authHelpers from './authHelpers';
 import * as spotifyApi from './api/spotifyApi';
+import { RateLimitedError } from './api/spotifyApi';
 import * as recommend from './recommend';
 import TopBar from './components/topBar';
 import Result from './components/result';
@@ -16,6 +17,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState('');
   const [excludeOwned, setExcludeOwned] = useState(false);
+  const [resultCount, setResultCount] = useState(50);
 
   useEffect(() => {
     authHelpers.installInterceptors(
@@ -72,22 +74,37 @@ function App() {
 
   const runArtistsFlow = async (seeds) => {
     const excludeIds = await fetchExcludeSet();
-    setLoadingMsg('Finding similar tracks (0/?)…');
-    const raw = await recommend.runFromArtists(token, seeds, (done, total) => {
-      setLoadingMsg(`Finding similar tracks (${done}/${total})…`);
-    });
+    setLoadingMsg('Finding similar tracks…');
+    const raw = await recommend.runFromArtists(
+      token,
+      seeds,
+      (done, total) => setLoadingMsg(`Finding similar tracks (${done}/${total})…`),
+      { targetCount: resultCount, overfetch: excludeOwned }
+    );
     const tracks = applyExclusion(raw, excludeIds);
     return { tracks, rawCount: raw.length };
   };
 
   const runTracksFlow = async (seeds) => {
     const excludeIds = await fetchExcludeSet();
-    setLoadingMsg('Finding similar tracks (0/?)…');
-    const raw = await recommend.runFromTracks(token, seeds, (done, total) => {
-      setLoadingMsg(`Finding similar tracks (${done}/${total})…`);
-    });
+    setLoadingMsg('Finding similar tracks…');
+    const raw = await recommend.runFromTracks(
+      token,
+      seeds,
+      (done, total) => setLoadingMsg(`Finding similar tracks (${done}/${total})…`),
+      { targetCount: resultCount, overfetch: excludeOwned }
+    );
     const tracks = applyExclusion(raw, excludeIds);
     return { tracks, rawCount: raw.length };
+  };
+
+  const handleApiError = (where, e) => {
+    console.error(where, e);
+    if (e instanceof RateLimitedError) {
+      toast.error(`Spotify is rate-limiting — wait ~${e.retryAfter}s and try again`);
+    } else {
+      toast.error('Something went wrong: ' + (e.message || 'unknown'));
+    }
   };
 
   const handleEmptyResult = (rawCount) => {
@@ -109,8 +126,7 @@ function App() {
       if (!tracks.length) return handleEmptyResult(rawCount);
       setData({ tracks, seeds: seeds.map((s) => ({ id: s.id, type: 'artist', name: s.name })) });
     } catch (e) {
-      console.error('handleExploreArtists', e);
-      toast.error('Something went wrong: ' + (e.message || 'unknown'));
+      handleApiError('handleExploreArtists', e);
     } finally {
       setLoading(false);
       setLoadingMsg('');
@@ -128,8 +144,7 @@ function App() {
       if (!tracks.length) return handleEmptyResult(rawCount);
       setData({ tracks, seeds: seeds.map((s) => ({ id: s.id, type: 'track', name: s.name })) });
     } catch (e) {
-      console.error('handleExploreTracks', e);
-      toast.error('Something went wrong: ' + (e.message || 'unknown'));
+      handleApiError('handleExploreTracks', e);
     } finally {
       setLoading(false);
       setLoadingMsg('');
@@ -146,8 +161,7 @@ function App() {
       if (!tracks.length) return handleEmptyResult(rawCount);
       setData({ tracks, seeds: seeds.map((s) => ({ id: s.id, type: 'artist', name: s.name })) });
     } catch (e) {
-      console.error('handleSelectedArtists', e);
-      toast.error('Something went wrong: ' + (e.message || 'unknown'));
+      handleApiError('handleSelectedArtists', e);
     } finally {
       setLoading(false);
       setLoadingMsg('');
@@ -164,8 +178,7 @@ function App() {
       if (!tracks.length) return handleEmptyResult(rawCount);
       setData({ tracks, seeds: seeds.map((s) => ({ id: s.id, type: 'track', name: s.name })) });
     } catch (e) {
-      console.error('handleSelectedTracks', e);
-      toast.error('Something went wrong: ' + (e.message || 'unknown'));
+      handleApiError('handleSelectedTracks', e);
     } finally {
       setLoading(false);
       setLoadingMsg('');
@@ -230,6 +243,8 @@ function App() {
           <Result
             token={token}
             data={data}
+            count={resultCount}
+            onCountChange={setResultCount}
             onExploreArtists={handleExploreArtists}
             onExploreTracks={handleExploreTracks}
             onSelectedArtists={handleSelectedArtists}

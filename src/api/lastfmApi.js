@@ -20,17 +20,27 @@ const call = async (params) => {
   return res.data;
 };
 
+const toMatch = (raw) => {
+  const n = parseFloat(raw);
+  return Number.isFinite(n) ? n : 0;
+};
+
+// Returns [{ name, match }] sorted by match desc.
 export const getSimilarArtists = async (artistName, limit = 30) => {
   try {
     const data = await call({ method: 'artist.getsimilar', artist: artistName, limit });
     const arr = (data && data.similarartists && data.similarartists.artist) || [];
-    return arr.map((a) => a.name).filter(Boolean);
+    return arr
+      .filter((a) => a && a.name)
+      .map((a) => ({ name: a.name, match: toMatch(a.match) }))
+      .sort((a, b) => b.match - a.match);
   } catch (e) {
     logFirstError('getSimilarArtists', e);
     return [];
   }
 };
 
+// Returns [{ artist, track, match }] sorted by match desc.
 export const getSimilarTracks = async (artistName, trackName, limit = 30) => {
   try {
     const data = await call({
@@ -41,8 +51,9 @@ export const getSimilarTracks = async (artistName, trackName, limit = 30) => {
     });
     const arr = (data && data.similartracks && data.similartracks.track) || [];
     return arr
-      .map((t) => ({ artist: t.artist && t.artist.name, track: t.name }))
-      .filter((x) => x.artist && x.track);
+      .filter((t) => t && t.name && t.artist && t.artist.name)
+      .map((t) => ({ artist: t.artist.name, track: t.name, match: toMatch(t.match) }))
+      .sort((a, b) => b.match - a.match);
   } catch (e) {
     logFirstError('getSimilarTracks', e);
     return [];

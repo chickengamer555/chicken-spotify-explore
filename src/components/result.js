@@ -5,6 +5,8 @@ import Functions from './functions';
 export default function Result({
   token,
   data,
+  count,
+  onCountChange,
   onExploreArtists,
   onExploreTracks,
   onSelectedArtists,
@@ -19,6 +21,8 @@ export default function Result({
     return (
       <Functions
         token={token}
+        count={count}
+        onCountChange={onCountChange}
         onExploreArtists={onExploreArtists}
         onExploreTracks={onExploreTracks}
         onSelectedArtists={onSelectedArtists}

@@ -1,29 +1,24 @@
 import * as spotify from './api/spotifyApi';
 import * as lastfm from './api/lastfmApi';
 
-const TARGET = 50;
-const POOL_CAP = 80;
 const SIMILAR_PER_SEED = 30;
-const CONCURRENCY = 4;
+const REQUEST_GAP_MS = 220;
 
-const pLimit = (max) => {
-  let active = 0;
-  const queue = [];
-  const next = () => {
-    if (active >= max || queue.length === 0) return;
-    const { fn, resolve, reject } = queue.shift();
-    active++;
-    Promise.resolve()
-      .then(fn)
-      .then(
-        (v) => { active--; resolve(v); next(); },
-        (e) => { active--; reject(e); next(); }
-      );
-  };
-  return (fn) => new Promise((resolve, reject) => {
-    queue.push({ fn, resolve, reject });
-    next();
-  });
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const poolCapFor = (targetCount, overfetch) =>
+  Math.ceil(targetCount * (overfetch ? 1.25 : 1.10));
+
+// Round-robin merge across N sorted lists. Keeps top-ranked items first while preserving seed diversity.
+const roundRobinMerge = (lists) => {
+  const out = [];
+  const maxLen = Math.max(0, ...lists.map((l) => l.length));
+  for (let i = 0; i < maxLen; i++) {
+    for (const list of lists) {
+      if (i < list.length) out.push(list[i]);
+    }
+  }
+  return out;
 };
 
 const dedupeTracks = (tracks) => {
@@ -37,49 +32,54 @@ const dedupeTracks = (tracks) => {
   return out;
 };
 
-const dedupeStrings = (arr) => {
+const dedupeByKey = (arr, keyFn) => {
   const seen = new Set();
   const out = [];
-  for (const s of arr) {
-    if (!s) continue;
-    const k = s.toLowerCase();
-    if (seen.has(k)) continue;
+  for (const item of arr) {
+    const k = keyFn(item);
+    if (!k || seen.has(k)) continue;
     seen.add(k);
-    out.push(s);
+    out.push(item);
   }
   return out;
 };
 
+const defaultOpts = { targetCount: 50, overfetch: false };
+
 // seedArtists: array of Spotify artist objects (need .name)
-export const runFromArtists = async (token, seedArtists, onProgress) => {
+export const runFromArtists = async (token, seedArtists, onProgress, opts = defaultOpts) => {
+  const { targetCount, overfetch } = { ...defaultOpts, ...opts };
+  const poolCap = poolCapFor(targetCount, overfetch);
   const seedNames = new Set(seedArtists.map((a) => a.name.toLowerCase()));
 
   const similar = await Promise.all(
     seedArtists.map((a) => lastfm.getSimilarArtists(a.name, SIMILAR_PER_SEED))
   );
 
-  const pool = dedupeStrings(similar.flat()).filter((n) => !seedNames.has(n.toLowerCase()));
-  const candidates = pool.slice(0, POOL_CAP);
+  // similar is array of [{ name, match }] already sorted by match desc per seed.
+  // Round-robin merge across seeds, then dedupe by lowercased name, then cap.
+  const merged = roundRobinMerge(similar);
+  const filtered = merged.filter((x) => !seedNames.has(x.name.toLowerCase()));
+  const candidates = dedupeByKey(filtered, (x) => x.name.toLowerCase()).slice(0, poolCap);
+
   const total = candidates.length;
-
+  const tracks = [];
   let done = 0;
-  const limit = pLimit(CONCURRENCY);
-  const tracks = await Promise.all(
-    candidates.map((name) =>
-      limit(async () => {
-        const t = await spotify.searchTrackByArtist(token, name);
-        done++;
-        if (onProgress) onProgress(done, total);
-        return t;
-      })
-    )
-  );
+  for (const c of candidates) {
+    const t = await spotify.searchTrackByArtist(token, c.name);
+    if (t) tracks.push(t);
+    done++;
+    if (onProgress) onProgress(done, total);
+    if (done < total) await sleep(REQUEST_GAP_MS);
+  }
 
-  return dedupeTracks(tracks).slice(0, TARGET);
+  return dedupeTracks(tracks).slice(0, targetCount);
 };
 
 // seedTracks: array of Spotify track objects (need .name and .artists[0].name)
-export const runFromTracks = async (token, seedTracks, onProgress) => {
+export const runFromTracks = async (token, seedTracks, onProgress, opts = defaultOpts) => {
+  const { targetCount, overfetch } = { ...defaultOpts, ...opts };
+  const poolCap = poolCapFor(targetCount, overfetch);
   const seedIds = new Set(seedTracks.map((t) => t.id));
 
   const similarLists = await Promise.all(
@@ -89,30 +89,22 @@ export const runFromTracks = async (token, seedTracks, onProgress) => {
     })
   );
 
-  const flat = similarLists.flat();
-  const seenKeys = new Set();
-  const candidates = [];
-  for (const item of flat) {
-    const k = `${item.artist.toLowerCase()}|${item.track.toLowerCase()}`;
-    if (seenKeys.has(k)) continue;
-    seenKeys.add(k);
-    candidates.push(item);
-    if (candidates.length >= POOL_CAP) break;
-  }
+  const merged = roundRobinMerge(similarLists);
+  const candidates = dedupeByKey(
+    merged,
+    (x) => `${x.artist.toLowerCase()}|${x.track.toLowerCase()}`
+  ).slice(0, poolCap);
+
   const total = candidates.length;
-
+  const tracks = [];
   let done = 0;
-  const limit = pLimit(CONCURRENCY);
-  const tracks = await Promise.all(
-    candidates.map((c) =>
-      limit(async () => {
-        const t = await spotify.searchExactTrack(token, c.artist, c.track);
-        done++;
-        if (onProgress) onProgress(done, total);
-        return t;
-      })
-    )
-  );
+  for (const c of candidates) {
+    const t = await spotify.searchExactTrack(token, c.artist, c.track);
+    if (t && !seedIds.has(t.id)) tracks.push(t);
+    done++;
+    if (onProgress) onProgress(done, total);
+    if (done < total) await sleep(REQUEST_GAP_MS);
+  }
 
-  return dedupeTracks(tracks.filter((t) => t && !seedIds.has(t.id))).slice(0, TARGET);
+  return dedupeTracks(tracks).slice(0, targetCount);
 };

@@ -12,8 +12,44 @@ const ExploreCard = ({ eyebrow, headline, onClick }) => (
   </button>
 );
 
+const COUNT_OPTIONS = [25, 50, 75, 100];
+
+const CountSelector = ({ value, onChange }) => {
+  const pillRefs = useRef([]);
+
+  const handleKeyDown = (e, idx) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    const step = e.key === 'ArrowRight' ? 1 : -1;
+    const next = (idx + step + COUNT_OPTIONS.length) % COUNT_OPTIONS.length;
+    onChange(COUNT_OPTIONS[next]);
+    if (pillRefs.current[next]) pillRefs.current[next].focus();
+  };
+
+  return (
+    <div className="count-selector" role="radiogroup" aria-label="Number of recommendations">
+      {COUNT_OPTIONS.map((n, i) => (
+        <button
+          key={n}
+          ref={(el) => (pillRefs.current[i] = el)}
+          className="count-selector__pill"
+          role="radio"
+          aria-checked={value === n}
+          tabIndex={value === n ? 0 : -1}
+          onClick={() => onChange(n)}
+          onKeyDown={(e) => handleKeyDown(e, i)}
+        >
+          {n}
+        </button>
+      ))}
+    </div>
+  );
+};
+
 export default function Functions({
   token,
+  count,
+  onCountChange,
   onExploreArtists,
   onExploreTracks,
   onSelectedArtists,
@@ -107,12 +143,15 @@ export default function Functions({
       </Fragment>
 
       {inputsEmpty ? (
-        <div className="explore-grid">
-          <ExploreCard eyebrow="RECENT" headline="Top Artists" onClick={() => onExploreArtists('medium_term')} />
-          <ExploreCard eyebrow="RECENT" headline="Top Tracks" onClick={() => onExploreTracks('medium_term')} />
-          <ExploreCard eyebrow="ALL-TIME" headline="Top Artists" onClick={() => onExploreArtists('long_term')} />
-          <ExploreCard eyebrow="ALL-TIME" headline="Top Tracks" onClick={() => onExploreTracks('long_term')} />
-        </div>
+        <Fragment>
+          <CountSelector value={count} onChange={onCountChange} />
+          <div className="explore-grid">
+            <ExploreCard eyebrow="RECENT" headline="Top Artists" onClick={() => onExploreArtists('medium_term')} />
+            <ExploreCard eyebrow="RECENT" headline="Top Tracks" onClick={() => onExploreTracks('medium_term')} />
+            <ExploreCard eyebrow="ALL-TIME" headline="Top Artists" onClick={() => onExploreArtists('long_term')} />
+            <ExploreCard eyebrow="ALL-TIME" headline="Top Tracks" onClick={() => onExploreTracks('long_term')} />
+          </div>
+        </Fragment>
       ) : null}
     </div>
   );
