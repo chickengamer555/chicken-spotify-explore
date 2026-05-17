@@ -7,7 +7,7 @@ const REQUEST_GAP_MS = 220;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const poolCapFor = (targetCount, overfetch) =>
-  Math.ceil(targetCount * (overfetch ? 1.25 : 1.10));
+  Math.ceil(targetCount * (overfetch ? 2.0 : 1.15));
 
 // Round-robin merge across N sorted lists. Keeps top-ranked items first while preserving seed diversity.
 const roundRobinMerge = (lists) => {

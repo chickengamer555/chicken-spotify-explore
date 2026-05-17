@@ -75,6 +75,18 @@ function App() {
   const runArtistsFlow = async (seeds) => {
     const excludeIds = await fetchExcludeSet();
     setLoadingMsg('Finding similar tracks…');
+
+    // Try the fast native Spotify endpoint first.
+    const probe = await spotifyApi.tryRecommendations(token, {
+      seedArtists: seeds.slice(0, 5).map((s) => s.id),
+      limit: Math.min(100, Math.ceil(resultCount * (excludeOwned ? 2 : 1.1))),
+    });
+    if (probe.ok && probe.tracks.length > 0) {
+      const filtered = applyExclusion(probe.tracks, excludeIds).slice(0, resultCount);
+      return { tracks: filtered, rawCount: probe.tracks.length };
+    }
+
+    // Fall back to Last.fm pipeline
     const raw = await recommend.runFromArtists(
       token,
       seeds,
@@ -88,6 +100,16 @@ function App() {
   const runTracksFlow = async (seeds) => {
     const excludeIds = await fetchExcludeSet();
     setLoadingMsg('Finding similar tracks…');
+
+    const probe = await spotifyApi.tryRecommendations(token, {
+      seedTracks: seeds.slice(0, 5).map((s) => s.id),
+      limit: Math.min(100, Math.ceil(resultCount * (excludeOwned ? 2 : 1.1))),
+    });
+    if (probe.ok && probe.tracks.length > 0) {
+      const filtered = applyExclusion(probe.tracks, excludeIds).slice(0, resultCount);
+      return { tracks: filtered, rawCount: probe.tracks.length };
+    }
+
     const raw = await recommend.runFromTracks(
       token,
       seeds,

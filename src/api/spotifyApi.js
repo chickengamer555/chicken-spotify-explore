@@ -4,6 +4,26 @@ const BASE = 'https://api.spotify.com/v1';
 
 const authHeader = (token) => ({ Authorization: 'Bearer ' + token });
 
+// Probe the deprecated /recommendations endpoint. If it works for this app, we can skip the whole Last.fm pipeline.
+// Returns { ok: true, tracks } on success or { ok: false, status, error } on failure.
+export const tryRecommendations = async (token, { seedArtists = [], seedTracks = [], limit = 50 } = {}) => {
+  try {
+    const params = { limit };
+    if (seedArtists.length) params.seed_artists = seedArtists.join(',');
+    if (seedTracks.length) params.seed_tracks = seedTracks.join(',');
+    const res = await axios.get(`${BASE}/recommendations`, {
+      headers: authHeader(token),
+      params,
+    });
+    return { ok: true, tracks: res.data.tracks || [] };
+  } catch (e) {
+    const status = e && e.response && e.response.status;
+    const errBody = e && e.response && e.response.data;
+    console.warn('[tryRecommendations] status=' + status, errBody);
+    return { ok: false, status, error: errBody };
+  }
+};
+
 export const getMe = async (token) => {
   const res = await axios.get(`${BASE}/me`, { headers: authHeader(token) });
   return res.data;
