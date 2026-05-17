@@ -35,7 +35,91 @@ const readCookie = (name) => {
   return row ? row.split('=')[1] : null;
 };
 
+let refreshInFlight = null;
+
+const refreshAccessToken = async () => {
+  if (refreshInFlight) return refreshInFlight;
+  const refreshToken = window.localStorage.getItem(REFRESH_KEY);
+  if (!refreshToken) return null;
+
+  refreshInFlight = (async () => {
+    try {
+      const body = new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken,
+        client_id: authCreds.client_id,
+      });
+      const res = await axios.post(authCreds.token_endpoint, body.toString(), {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        // Bypass our own interceptor on the refresh call itself
+        __skipAuthInterceptor: true,
+      });
+      const { access_token, refresh_token: newRefresh, expires_in } = res.data;
+      setCookie('spotiToken', access_token, expires_in || 3600);
+      if (newRefresh) {
+        window.localStorage.setItem(REFRESH_KEY, newRefresh);
+      }
+      return access_token;
+    } catch (e) {
+      window.localStorage.removeItem(REFRESH_KEY);
+      return null;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+
+  return refreshInFlight;
+};
+
+// Install global axios interceptors once. Auto-refresh on 401 and retry.
+let interceptorsInstalled = false;
+const installInterceptors = (onTokenRefreshed, onAuthLost) => {
+  if (interceptorsInstalled) return;
+  interceptorsInstalled = true;
+
+  axios.interceptors.request.use((config) => {
+    // Only attach the token to Spotify API calls (don't leak to Last.fm/iTunes)
+    if (config.url && config.url.startsWith('https://api.spotify.com/')) {
+      const token = readCookie('spotiToken');
+      if (token) {
+        config.headers = config.headers || {};
+        config.headers.Authorization = 'Bearer ' + token;
+      }
+    }
+    return config;
+  });
+
+  axios.interceptors.response.use(
+    (res) => res,
+    async (error) => {
+      const original = error.config || {};
+      if (
+        error.response &&
+        error.response.status === 401 &&
+        !original.__retried &&
+        !original.__skipAuthInterceptor &&
+        original.url &&
+        original.url.startsWith('https://api.spotify.com/')
+      ) {
+        original.__retried = true;
+        const newToken = await refreshAccessToken();
+        if (newToken) {
+          original.headers = original.headers || {};
+          original.headers.Authorization = 'Bearer ' + newToken;
+          if (onTokenRefreshed) onTokenRefreshed(newToken);
+          return axios(original);
+        } else {
+          if (onAuthLost) onAuthLost();
+        }
+      }
+      return Promise.reject(error);
+    }
+  );
+};
+
 const authHelpers = {
+  installInterceptors,
+
   getAuth: async function () {
     const verifier = randomString(64);
     const challenge = base64UrlEncode(await sha256(verifier));
@@ -52,15 +136,12 @@ const authHelpers = {
     window.location.href = `${authCreds.auth_endpoint}?${params.toString()}`;
   },
 
-  // Called on page load. If the URL has ?code=..., exchange it for a token.
-  // Returns the access token, an error string, or null.
   getHashCode: async function () {
     const qs = new URLSearchParams(window.location.search);
     const code = qs.get('code');
     const err = qs.get('error');
 
     if (err) {
-      // Clean up URL
       window.history.replaceState({}, document.title, window.location.pathname);
       return err;
     }
@@ -83,6 +164,7 @@ const authHelpers = {
       });
       const res = await axios.post(authCreds.token_endpoint, body.toString(), {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        __skipAuthInterceptor: true,
       });
       const { access_token, refresh_token, expires_in } = res.data;
       setCookie('spotiToken', access_token, expires_in || 3600);

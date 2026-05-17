@@ -18,6 +18,15 @@ function App() {
   const [excludeOwned, setExcludeOwned] = useState(false);
 
   useEffect(() => {
+    authHelpers.installInterceptors(
+      (newToken) => setToken(newToken),
+      () => {
+        authHelpers.logout();
+        setToken('');
+        setData(null);
+        toast.error('Session expired — please log in again');
+      }
+    );
     (async () => {
       let t = authHelpers.getCookie();
       const hashResult = await authHelpers.getHashCode();
@@ -175,10 +184,7 @@ function App() {
 
   return (
     <div className="page-container">
-      <div className="aurora" aria-hidden="true">
-        <span className="aurora__blob aurora__blob--cyan" />
-        <span className="aurora__blob aurora__blob--magenta" />
-      </div>
+      <div className="night-sky" aria-hidden="true" />
 
       <ToastContainer
         position="top-right"
