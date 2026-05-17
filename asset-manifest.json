@@ -1,13 +1,13 @@
 {
   "files": {
     "main.css": "/chicken-spotify-explore/static/css/main.b4bfbf0f.css",
-    "main.js": "/chicken-spotify-explore/static/js/main.97b88422.js",
+    "main.js": "/chicken-spotify-explore/static/js/main.fc75677e.js",
     "index.html": "/chicken-spotify-explore/index.html",
     "main.b4bfbf0f.css.map": "/chicken-spotify-explore/static/css/main.b4bfbf0f.css.map",
-    "main.97b88422.js.map": "/chicken-spotify-explore/static/js/main.97b88422.js.map"
+    "main.fc75677e.js.map": "/chicken-spotify-explore/static/js/main.fc75677e.js.map"
   },
   "entrypoints": [
     "static/css/main.b4bfbf0f.css",
-    "static/js/main.97b88422.js"
+    "static/js/main.fc75677e.js"
   ]
 }
