@@ -153,15 +153,21 @@ export const getMyPlaylists = async (token) => {
   return all;
 };
 
-export const getPlaylistTrackIds = async (token, playlistId) => {
+export const getPlaylistTrackIds = async (token, playlistId, playlistName) => {
   const ids = new Set();
   let next = `${BASE}/playlists/${playlistId}/tracks?limit=100&fields=items(track(id)),next`;
   while (next) {
-    const res = await axios.get(next, { headers: authHeader(token) });
-    for (const item of res.data.items) {
-      if (item && item.track && item.track.id) ids.add(item.track.id);
+    try {
+      const res = await axios.get(next, { headers: authHeader(token) });
+      for (const item of res.data.items) {
+        if (item && item.track && item.track.id) ids.add(item.track.id);
+      }
+      next = res.data.next;
+    } catch (e) {
+      const status = e && e.response && e.response.status;
+      console.warn(`[skip-songs] playlist "${playlistName || playlistId}" failed (status=${status})`);
+      return ids;
     }
-    next = res.data.next;
   }
   return ids;
 };
@@ -170,11 +176,17 @@ export const getMySavedTrackIds = async (token) => {
   const ids = new Set();
   let next = `${BASE}/me/tracks?limit=50&fields=items(track(id)),next`;
   while (next) {
-    const res = await axios.get(next, { headers: authHeader(token) });
-    for (const item of res.data.items) {
-      if (item && item.track && item.track.id) ids.add(item.track.id);
+    try {
+      const res = await axios.get(next, { headers: authHeader(token) });
+      for (const item of res.data.items) {
+        if (item && item.track && item.track.id) ids.add(item.track.id);
+      }
+      next = res.data.next;
+    } catch (e) {
+      const status = e && e.response && e.response.status;
+      console.warn(`[skip-songs] Liked Songs failed (status=${status})`);
+      return ids;
     }
-    next = res.data.next;
   }
   return ids;
 };
@@ -183,66 +195,90 @@ export const getMySavedAlbumTrackIds = async (token) => {
   const ids = new Set();
   let next = `${BASE}/me/albums?limit=50`;
   while (next) {
-    const res = await axios.get(next, { headers: authHeader(token) });
-    for (const item of res.data.items) {
-      if (item && item.album && item.album.tracks && item.album.tracks.items) {
-        for (const tr of item.album.tracks.items) {
-          if (tr && tr.id) ids.add(tr.id);
+    try {
+      const res = await axios.get(next, { headers: authHeader(token) });
+      for (const item of res.data.items) {
+        if (item && item.album && item.album.tracks && item.album.tracks.items) {
+          for (const tr of item.album.tracks.items) {
+            if (tr && tr.id) ids.add(tr.id);
+          }
         }
       }
+      next = res.data.next;
+    } catch (e) {
+      const status = e && e.response && e.response.status;
+      console.warn(`[skip-songs] Saved Albums failed (status=${status})`);
+      return ids;
     }
-    next = res.data.next;
   }
   return ids;
 };
 
 export const getAllMyPlaylistTrackIds = async (token, onProgress) => {
-  // Fetch current user id so we only read playlists we own (others 403)
+  // Fetch current user id so we only read playlists we own — Spotify 403s on anything else for new dev-mode apps
   let myId = null;
   try {
     const meRes = await axios.get(`${BASE}/me`, { headers: authHeader(token) });
     myId = meRes.data && meRes.data.id;
-  } catch {}
+  } catch (e) {
+    console.warn('[skip-songs] /me failed — owner filter will skip all playlists', e && e.response && e.response.status);
+  }
 
   const allPlaylists = await getMyPlaylists(token);
-  // Spotify 403s on tracks from playlists owned by other users (followed playlists, collab where you aren't collaborator).
-  // Filter to playlists owned by current user OR explicitly collaborative.
-  const playlists = allPlaylists.filter(
-    (p) => (myId && p.owner && p.owner.id === myId) || p.collaborative === true
-  );
+  // Strict filter: ONLY playlists you personally own. Excludes:
+  //   - playlists you follow (owner.id = some other user)
+  //   - Spotify-owned algorithmic/editorial playlists (owner.id = 'spotify')
+  //   - everything else (returns 403 for new dev-mode apps per Nov 2024 changes)
+  const playlists = myId
+    ? allPlaylists.filter((p) => p && p.owner && p.owner.id === myId)
+    : [];
   const skipped = allPlaylists.length - playlists.length;
   if (skipped > 0) {
-    console.log(`[skip-songs] skipping ${skipped} playlist(s) not owned by you (would 403)`);
+    console.log(`[skip-songs] skipping ${skipped} playlist(s) not owned by you (Spotify-owned or followed)`);
   }
 
   const ids = new Set();
+  const totalSteps = playlists.length + 2;
+  if (onProgress) onProgress(0, totalSteps);
 
-  // Always include Liked Songs and Saved Albums — these are NOT in /me/playlists
-  if (onProgress) onProgress(0, playlists.length + 2);
-
+  let likedCount = 0;
   try {
     const liked = await getMySavedTrackIds(token);
     liked.forEach((id) => ids.add(id));
-  } catch {}
-  if (onProgress) onProgress(1, playlists.length + 2);
+    likedCount = liked.size;
+  } catch (e) {
+    console.warn('[skip-songs] Liked Songs threw unexpectedly', e);
+  }
+  if (onProgress) onProgress(1, totalSteps);
 
+  let albumsCount = 0;
   try {
     const albums = await getMySavedAlbumTrackIds(token);
     albums.forEach((id) => ids.add(id));
-  } catch {}
-  if (onProgress) onProgress(2, playlists.length + 2);
+    albumsCount = albums.size;
+  } catch (e) {
+    console.warn('[skip-songs] Saved Albums threw unexpectedly', e);
+  }
+  if (onProgress) onProgress(2, totalSteps);
 
+  let playlistTracks = 0;
   let done = 2;
   for (const p of playlists) {
-    try {
-      const trackIds = await getPlaylistTrackIds(token, p.id);
-      trackIds.forEach((id) => ids.add(id));
-    } catch {}
+    const before = ids.size;
+    const trackIds = await getPlaylistTrackIds(token, p.id, p.name);
+    trackIds.forEach((id) => ids.add(id));
+    playlistTracks += ids.size - before;
     done++;
-    if (onProgress) onProgress(done, playlists.length + 2);
+    if (onProgress) onProgress(done, totalSteps);
   }
 
-  console.log(`[skip-songs] excluded ${ids.size} tracks across ${playlists.length} playlists + liked + saved albums`);
+  console.log('[skip-songs] breakdown:', {
+    likedSongs: likedCount,
+    savedAlbums: albumsCount,
+    ownedPlaylists: playlists.length,
+    fromOwnedPlaylists: playlistTracks,
+    totalUnique: ids.size,
+  });
   return ids;
 };
 
