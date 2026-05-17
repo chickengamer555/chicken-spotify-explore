@@ -6,6 +6,8 @@ import Loading from './loading';
 
 export default function Functions({
   token,
+  excludeOwned,
+  onExcludeOwnedChange,
   onExploreArtists,
   onExploreTracks,
   onSelectedArtists,
@@ -112,6 +114,14 @@ export default function Functions({
               Explore by All-Time Top Tracks
             </button>
           </div>
+          <label className="exclude-toggle">
+            <input
+              type="checkbox"
+              checked={excludeOwned}
+              onChange={(e) => onExcludeOwnedChange(e.target.checked)}
+            />
+            <span>Skip songs already in my playlists</span>
+          </label>
         </Fragment>
       ) : null}
     </div>

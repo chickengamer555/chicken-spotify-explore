@@ -4,7 +4,6 @@ import authHelpers from './authHelpers';
 import * as spotifyApi from './api/spotifyApi';
 import * as recommend from './recommend';
 import Header from './components/header';
-import Footer from './components/footer';
 import Result from './components/result';
 import Login from './components/login';
 import Loading from './components/loading';
@@ -16,6 +15,7 @@ function App() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState('');
+  const [excludeOwned, setExcludeOwned] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -36,24 +36,48 @@ function App() {
     setData(null);
   };
 
+  const fetchExcludeSet = async () => {
+    if (!excludeOwned) return new Set();
+    setLoadingMsg('Loading your playlists…');
+    return await spotifyApi.getAllMyPlaylistTrackIds(token, (done, total) => {
+      setLoadingMsg(`Loading your playlists (${done}/${total})…`);
+    });
+  };
+
+  const applyExclusion = (tracks, excludeIds) => {
+    if (!excludeIds || excludeIds.size === 0) return tracks;
+    return tracks.filter((t) => !excludeIds.has(t.id));
+  };
+
+  const runArtistsFlow = async (seeds) => {
+    const excludeIds = await fetchExcludeSet();
+    setLoadingMsg('Finding similar tracks (0/?)…');
+    let tracks = await recommend.runFromArtists(token, seeds, (done, total) => {
+      setLoadingMsg(`Finding similar tracks (${done}/${total})…`);
+    });
+    tracks = applyExclusion(tracks, excludeIds);
+    return tracks;
+  };
+
+  const runTracksFlow = async (seeds) => {
+    const excludeIds = await fetchExcludeSet();
+    setLoadingMsg('Finding similar tracks (0/?)…');
+    let tracks = await recommend.runFromTracks(token, seeds, (done, total) => {
+      setLoadingMsg(`Finding similar tracks (${done}/${total})…`);
+    });
+    tracks = applyExclusion(tracks, excludeIds);
+    return tracks;
+  };
+
   const handleExploreArtists = async (range) => {
     if (!token) return;
     setLoading(true);
     setLoadingMsg('Loading your top artists…');
     try {
       const seeds = await spotifyApi.getTopArtists(token, range);
-      if (!seeds.length) {
-        toast.error('No top artists found for this time range');
-        return;
-      }
-      setLoadingMsg('Finding similar tracks (0/?)…');
-      const tracks = await recommend.runFromArtists(token, seeds, (done, total) => {
-        setLoadingMsg(`Finding similar tracks (${done}/${total})…`);
-      });
-      if (!tracks.length) {
-        toast.error('No recommendations found');
-        return;
-      }
+      if (!seeds.length) return toast.error('No top artists found for this time range');
+      const tracks = await runArtistsFlow(seeds);
+      if (!tracks.length) return toast.error('No recommendations found (after exclusions)');
       setData({ tracks, seeds: seeds.map((s) => ({ id: s.id, type: 'artist', name: s.name })) });
     } catch (e) {
       toast.error('Something went wrong: ' + (e.message || 'unknown'));
@@ -69,18 +93,9 @@ function App() {
     setLoadingMsg('Loading your top tracks…');
     try {
       const seeds = await spotifyApi.getTopTracks(token, range);
-      if (!seeds.length) {
-        toast.error('No top tracks found for this time range');
-        return;
-      }
-      setLoadingMsg('Finding similar tracks (0/?)…');
-      const tracks = await recommend.runFromTracks(token, seeds, (done, total) => {
-        setLoadingMsg(`Finding similar tracks (${done}/${total})…`);
-      });
-      if (!tracks.length) {
-        toast.error('No recommendations found');
-        return;
-      }
+      if (!seeds.length) return toast.error('No top tracks found for this time range');
+      const tracks = await runTracksFlow(seeds);
+      if (!tracks.length) return toast.error('No recommendations found (after exclusions)');
       setData({ tracks, seeds: seeds.map((s) => ({ id: s.id, type: 'track', name: s.name })) });
     } catch (e) {
       toast.error('Something went wrong: ' + (e.message || 'unknown'));
@@ -96,14 +111,8 @@ function App() {
     setLoadingMsg('Loading selected artists…');
     try {
       const seeds = await spotifyApi.getArtistsByIds(token, ids);
-      setLoadingMsg('Finding similar tracks (0/?)…');
-      const tracks = await recommend.runFromArtists(token, seeds, (done, total) => {
-        setLoadingMsg(`Finding similar tracks (${done}/${total})…`);
-      });
-      if (!tracks.length) {
-        toast.error('No recommendations found');
-        return;
-      }
+      const tracks = await runArtistsFlow(seeds);
+      if (!tracks.length) return toast.error('No recommendations found (after exclusions)');
       setData({ tracks, seeds: seeds.map((s) => ({ id: s.id, type: 'artist', name: s.name })) });
     } catch (e) {
       toast.error('Something went wrong: ' + (e.message || 'unknown'));
@@ -119,14 +128,8 @@ function App() {
     setLoadingMsg('Loading selected tracks…');
     try {
       const seeds = await spotifyApi.getTracksByIds(token, ids);
-      setLoadingMsg('Finding similar tracks (0/?)…');
-      const tracks = await recommend.runFromTracks(token, seeds, (done, total) => {
-        setLoadingMsg(`Finding similar tracks (${done}/${total})…`);
-      });
-      if (!tracks.length) {
-        toast.error('No recommendations found');
-        return;
-      }
+      const tracks = await runTracksFlow(seeds);
+      if (!tracks.length) return toast.error('No recommendations found (after exclusions)');
       setData({ tracks, seeds: seeds.map((s) => ({ id: s.id, type: 'track', name: s.name })) });
     } catch (e) {
       toast.error('Something went wrong: ' + (e.message || 'unknown'));
@@ -175,20 +178,23 @@ function App() {
       <div className="top">
         <Header title="Explore" />
         <Login token={token} />
+        {token ? (
+          <button className="top-logout" onClick={handleLogout}>&gt; log out</button>
+        ) : null}
       </div>
       <div className="main">
         <div className="results-container">
           {loading ? (
-            <div className="results">
-              <div className="state">
-                <Loading />
-                <p style={{ marginTop: '1rem', textAlign: 'center' }}>{loadingMsg}</p>
-              </div>
+            <div className="loading-overlay">
+              <Loading />
+              <p className="loading-msg">{loadingMsg}</p>
             </div>
           ) : token ? (
             <Result
               token={token}
               data={data}
+              excludeOwned={excludeOwned}
+              onExcludeOwnedChange={setExcludeOwned}
               onExploreArtists={handleExploreArtists}
               onExploreTracks={handleExploreTracks}
               onSelectedArtists={handleSelectedArtists}
@@ -198,9 +204,6 @@ function App() {
             />
           ) : null}
         </div>
-      </div>
-      <div className="bottom">
-        <Footer logged={!!token} onLogout={handleLogout} />
       </div>
     </div>
   );

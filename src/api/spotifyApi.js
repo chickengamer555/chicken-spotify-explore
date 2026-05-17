@@ -83,6 +83,45 @@ export const getArtistsByIds = async (token, ids) => {
   return res.data.artists;
 };
 
+export const getMyPlaylists = async (token) => {
+  const all = [];
+  let next = `${BASE}/me/playlists?limit=50`;
+  while (next) {
+    const res = await axios.get(next, { headers: authHeader(token) });
+    all.push(...res.data.items);
+    next = res.data.next;
+  }
+  return all;
+};
+
+export const getPlaylistTrackIds = async (token, playlistId) => {
+  const ids = new Set();
+  let next = `${BASE}/playlists/${playlistId}/tracks?limit=100&fields=items(track(id)),next`;
+  while (next) {
+    const res = await axios.get(next, { headers: authHeader(token) });
+    for (const item of res.data.items) {
+      if (item && item.track && item.track.id) ids.add(item.track.id);
+    }
+    next = res.data.next;
+  }
+  return ids;
+};
+
+export const getAllMyPlaylistTrackIds = async (token, onProgress) => {
+  const playlists = await getMyPlaylists(token);
+  const ids = new Set();
+  let done = 0;
+  for (const p of playlists) {
+    try {
+      const trackIds = await getPlaylistTrackIds(token, p.id);
+      trackIds.forEach((id) => ids.add(id));
+    } catch {}
+    done++;
+    if (onProgress) onProgress(done, playlists.length);
+  }
+  return ids;
+};
+
 export const createPlaylist = async (token, name, description = '') => {
   const res = await axios.post(
     `${BASE}/me/playlists`,

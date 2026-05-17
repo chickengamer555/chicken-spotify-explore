@@ -5,6 +5,8 @@ import Functions from './functions';
 export default function Result({
   token,
   data,
+  excludeOwned,
+  onExcludeOwnedChange,
   onExploreArtists,
   onExploreTracks,
   onSelectedArtists,
@@ -19,6 +21,8 @@ export default function Result({
     return (
       <Functions
         token={token}
+        excludeOwned={excludeOwned}
+        onExcludeOwnedChange={onExcludeOwnedChange}
         onExploreArtists={onExploreArtists}
         onExploreTracks={onExploreTracks}
         onSelectedArtists={onSelectedArtists}

@@ -7,15 +7,36 @@ const formatDuration = (ms) => {
   return minutes + ':' + (seconds < 10 ? '0' : '') + seconds;
 };
 
-const PreviewButton = ({ track }) => {
-  const [status, setStatus] = useState(
-    track.preview_url ? 'ready' : 'idle'
-  );
+const TrackRow = ({ track, currentPlayingId, setCurrentPlayingId }) => {
+  const [status, setStatus] = useState(track.preview_url ? 'ready' : 'idle');
   const [url, setUrl] = useState(track.preview_url || null);
   const audioRef = useRef(null);
 
-  const onClick = async () => {
-    if (status === 'none') return;
+  const isPlaying = status === 'playing' && currentPlayingId === track.id;
+
+  const playWithCleanup = () => {
+    if (!audioRef.current) return;
+    audioRef.current.volume = 0.3;
+    audioRef.current.currentTime = 0;
+    audioRef.current.play().catch(() => setStatus('ready'));
+    setCurrentPlayingId(track.id);
+    setStatus('playing');
+  };
+
+  const handleClick = async () => {
+    if (status === 'none' || status === 'loading') return;
+
+    if (status === 'playing') {
+      if (audioRef.current) audioRef.current.pause();
+      setStatus('ready');
+      if (currentPlayingId === track.id) setCurrentPlayingId(null);
+      return;
+    }
+
+    if (status === 'ready' && url) {
+      playWithCleanup();
+      return;
+    }
 
     if (status === 'idle') {
       setStatus('loading');
@@ -26,58 +47,62 @@ const PreviewButton = ({ track }) => {
         return;
       }
       setUrl(found);
-      setStatus('playing');
-      // Wait a tick for the <audio> to mount with the new src
-      setTimeout(() => {
-        if (audioRef.current) {
-          audioRef.current.volume = 0.3;
-          audioRef.current.play().catch(() => setStatus('ready'));
-        }
-      }, 0);
-      return;
-    }
-
-    if (status === 'ready') {
-      if (audioRef.current) {
-        audioRef.current.volume = 0.3;
-        audioRef.current.play().catch(() => {});
-        setStatus('playing');
-      }
-      return;
-    }
-
-    if (status === 'playing') {
-      if (audioRef.current) audioRef.current.pause();
       setStatus('ready');
-      return;
-    }
-
-    if (status === 'loading') {
-      return;
+      setTimeout(playWithCleanup, 0);
     }
   };
 
-  let label = 'Play Preview';
-  if (status === 'loading') label = 'Loading…';
-  else if (status === 'playing') label = 'Pause';
-  else if (status === 'none') label = 'No Preview';
+  // If another track started playing, pause ours
+  if (isPlaying === false && status === 'playing' && currentPlayingId !== track.id) {
+    if (audioRef.current && !audioRef.current.paused) audioRef.current.pause();
+    setStatus('ready');
+  }
+
+  const overlay = (() => {
+    if (status === 'loading') return '⏳';
+    if (status === 'none') return '✕';
+    if (isPlaying) return '⏸';
+    return '▶';
+  })();
+
+  const albumImg =
+    track.album.images && track.album.images[0]
+      ? (track.album.images[2] || track.album.images[0]).url
+      : null;
 
   return (
-    <Fragment>
-      <button onClick={onClick} disabled={status === 'loading' || status === 'none'}>
-        {label}
-      </button>
+    <div className="track-info">
+      <li className="art preview-clickable" onClick={handleClick} title={status === 'none' ? 'No preview available' : ''}>
+        {albumImg ? <img alt="album art" src={albumImg} /> : <div className="art-placeholder" />}
+        <span className={'preview-overlay status-' + status}>{overlay}</span>
+      </li>
+      <li className="name">
+        {track.name}
+        <span>
+          {track.artists.map((item, index) => (index ? ', ' : '') + item.name)}
+        </span>
+        <span className="album">{track.album.name}</span>
+      </li>
+      <li className="duration">
+        <span>{formatDuration(track.duration_ms)}</span>
+      </li>
       {url ? (
-        <audio ref={audioRef} loop onEnded={() => setStatus('ready')}>
+        <audio
+          ref={audioRef}
+          loop
+          onEnded={() => setStatus('ready')}
+        >
           <source src={url} type="audio/mp4" />
           <source src={url} type="audio/mpeg" />
         </audio>
       ) : null}
-    </Fragment>
+    </div>
   );
 };
 
 export default function Tracks({ data, onBack, onCreatePlaylist }) {
+  const [currentPlayingId, setCurrentPlayingId] = useState(null);
+
   if (!data) return null;
 
   return (
@@ -90,31 +115,11 @@ export default function Tracks({ data, onBack, onCreatePlaylist }) {
         <ul>
           {data.tracks.map((track) => (
             <Fragment key={track.id}>
-              <div className="track-info">
-                {track.album.images && track.album.images[0] ? (
-                  <li className="art">
-                    <img
-                      alt="album art"
-                      src={(track.album.images[2] || track.album.images[0]).url}
-                    />
-                  </li>
-                ) : null}
-                <li className="name">
-                  {track.name}
-                  <span>
-                    {track.artists.map(
-                      (item, index) => (index ? ', ' : '') + item.name
-                    )}
-                  </span>
-                  <span className="album">{track.album.name}</span>
-                </li>
-                <li className="preview">
-                  <PreviewButton track={track} />
-                </li>
-                <li className="duration">
-                  <span>{formatDuration(track.duration_ms)}</span>
-                </li>
-              </div>
+              <TrackRow
+                track={track}
+                currentPlayingId={currentPlayingId}
+                setCurrentPlayingId={setCurrentPlayingId}
+              />
             </Fragment>
           ))}
         </ul>
