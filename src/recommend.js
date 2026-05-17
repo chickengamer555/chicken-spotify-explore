@@ -2,9 +2,7 @@ import * as spotify from './api/spotifyApi';
 import * as lastfm from './api/lastfmApi';
 
 const SIMILAR_PER_SEED = 30;
-const REQUEST_GAP_MS = 220;
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const CONCURRENCY = 6;
 
 const poolCapFor = (targetCount, overfetch) =>
   Math.ceil(targetCount * (overfetch ? 2.0 : 1.15));
@@ -65,13 +63,20 @@ export const runFromArtists = async (token, seedArtists, onProgress, opts = defa
   const total = candidates.length;
   const tracks = [];
   let done = 0;
-  for (const c of candidates) {
-    const t = await spotify.searchTrackByArtist(token, c.name);
-    if (t) tracks.push(t);
-    done++;
-    if (onProgress) onProgress(done, total);
-    if (done < total) await sleep(REQUEST_GAP_MS);
-  }
+
+  // Parallel worker pool
+  let i = 0;
+  const workers = Array.from({ length: Math.min(CONCURRENCY, total) }, async () => {
+    while (i < total) {
+      const idx = i++;
+      const c = candidates[idx];
+      const t = await spotify.searchTrackByArtist(token, c.name);
+      if (t) tracks.push(t);
+      done++;
+      if (onProgress) onProgress(done, total);
+    }
+  });
+  await Promise.all(workers);
 
   return dedupeTracks(tracks).slice(0, targetCount);
 };
@@ -98,13 +103,19 @@ export const runFromTracks = async (token, seedTracks, onProgress, opts = defaul
   const total = candidates.length;
   const tracks = [];
   let done = 0;
-  for (const c of candidates) {
-    const t = await spotify.searchExactTrack(token, c.artist, c.track);
-    if (t && !seedIds.has(t.id)) tracks.push(t);
-    done++;
-    if (onProgress) onProgress(done, total);
-    if (done < total) await sleep(REQUEST_GAP_MS);
-  }
+
+  let i = 0;
+  const workers = Array.from({ length: Math.min(CONCURRENCY, total) }, async () => {
+    while (i < total) {
+      const idx = i++;
+      const c = candidates[idx];
+      const t = await spotify.searchExactTrack(token, c.artist, c.track);
+      if (t && !seedIds.has(t.id)) tracks.push(t);
+      done++;
+      if (onProgress) onProgress(done, total);
+    }
+  });
+  await Promise.all(workers);
 
   return dedupeTracks(tracks).slice(0, targetCount);
 };
