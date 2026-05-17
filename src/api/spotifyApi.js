@@ -166,18 +166,66 @@ export const getPlaylistTrackIds = async (token, playlistId) => {
   return ids;
 };
 
+export const getMySavedTrackIds = async (token) => {
+  const ids = new Set();
+  let next = `${BASE}/me/tracks?limit=50&fields=items(track(id)),next`;
+  while (next) {
+    const res = await axios.get(next, { headers: authHeader(token) });
+    for (const item of res.data.items) {
+      if (item && item.track && item.track.id) ids.add(item.track.id);
+    }
+    next = res.data.next;
+  }
+  return ids;
+};
+
+export const getMySavedAlbumTrackIds = async (token) => {
+  const ids = new Set();
+  let next = `${BASE}/me/albums?limit=50`;
+  while (next) {
+    const res = await axios.get(next, { headers: authHeader(token) });
+    for (const item of res.data.items) {
+      if (item && item.album && item.album.tracks && item.album.tracks.items) {
+        for (const tr of item.album.tracks.items) {
+          if (tr && tr.id) ids.add(tr.id);
+        }
+      }
+    }
+    next = res.data.next;
+  }
+  return ids;
+};
+
 export const getAllMyPlaylistTrackIds = async (token, onProgress) => {
   const playlists = await getMyPlaylists(token);
   const ids = new Set();
-  let done = 0;
+
+  // Always include Liked Songs and Saved Albums — these are NOT in /me/playlists
+  if (onProgress) onProgress(0, playlists.length + 2);
+
+  try {
+    const liked = await getMySavedTrackIds(token);
+    liked.forEach((id) => ids.add(id));
+  } catch {}
+  if (onProgress) onProgress(1, playlists.length + 2);
+
+  try {
+    const albums = await getMySavedAlbumTrackIds(token);
+    albums.forEach((id) => ids.add(id));
+  } catch {}
+  if (onProgress) onProgress(2, playlists.length + 2);
+
+  let done = 2;
   for (const p of playlists) {
     try {
       const trackIds = await getPlaylistTrackIds(token, p.id);
       trackIds.forEach((id) => ids.add(id));
     } catch {}
     done++;
-    if (onProgress) onProgress(done, playlists.length);
+    if (onProgress) onProgress(done, playlists.length + 2);
   }
+
+  console.log(`[skip-songs] excluded ${ids.size} tracks across ${playlists.length} playlists + liked + saved albums`);
   return ids;
 };
 
