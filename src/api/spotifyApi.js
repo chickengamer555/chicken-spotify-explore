@@ -1,0 +1,114 @@
+import axios from 'axios';
+
+const BASE = 'https://api.spotify.com/v1';
+
+const authHeader = (token) => ({ Authorization: 'Bearer ' + token });
+
+export const getMe = async (token) => {
+  const res = await axios.get(`${BASE}/me`, { headers: authHeader(token) });
+  return res.data;
+};
+
+export const getTopArtists = async (token, range, limit = 5) => {
+  const res = await axios.get(`${BASE}/me/top/artists`, {
+    headers: authHeader(token),
+    params: { limit, time_range: range },
+  });
+  return res.data.items;
+};
+
+export const getTopTracks = async (token, range, limit = 5) => {
+  const res = await axios.get(`${BASE}/me/top/tracks`, {
+    headers: authHeader(token),
+    params: { limit, time_range: range },
+  });
+  return res.data.items;
+};
+
+export const searchArtist = async (token, q, limit = 18) => {
+  const res = await axios.get(`${BASE}/search`, {
+    headers: authHeader(token),
+    params: { q, type: 'artist', limit },
+  });
+  return res.data.artists.items;
+};
+
+export const searchTrack = async (token, q, limit = 24) => {
+  const res = await axios.get(`${BASE}/search`, {
+    headers: authHeader(token),
+    params: { q, type: 'track', limit },
+  });
+  return res.data.tracks.items;
+};
+
+export const searchTrackByArtist = async (token, artistName) => {
+  try {
+    const res = await axios.get(`${BASE}/search`, {
+      headers: authHeader(token),
+      params: { q: `artist:"${artistName}"`, type: 'track', limit: 1 },
+    });
+    return res.data.tracks.items[0] || null;
+  } catch {
+    return null;
+  }
+};
+
+export const searchExactTrack = async (token, artist, track) => {
+  try {
+    const res = await axios.get(`${BASE}/search`, {
+      headers: authHeader(token),
+      params: { q: `track:"${track}" artist:"${artist}"`, type: 'track', limit: 1 },
+    });
+    return res.data.tracks.items[0] || null;
+  } catch {
+    return null;
+  }
+};
+
+export const getTracksByIds = async (token, ids) => {
+  if (!ids || ids.length === 0) return [];
+  const res = await axios.get(`${BASE}/tracks`, {
+    headers: authHeader(token),
+    params: { ids: ids.join(',') },
+  });
+  return res.data.tracks;
+};
+
+export const getArtistsByIds = async (token, ids) => {
+  if (!ids || ids.length === 0) return [];
+  const res = await axios.get(`${BASE}/artists`, {
+    headers: authHeader(token),
+    params: { ids: ids.join(',') },
+  });
+  return res.data.artists;
+};
+
+export const createPlaylist = async (token, name, description = '') => {
+  const res = await axios.post(
+    `${BASE}/me/playlists`,
+    { name, public: false, description },
+    {
+      headers: {
+        ...authHeader(token),
+        'Content-Type': 'application/json',
+      },
+    }
+  );
+  return res.data;
+};
+
+export const addTracksToPlaylist = async (token, playlistId, uris) => {
+  for (let i = 0; i < uris.length; i += 100) {
+    const slice = uris.slice(i, i + 100);
+    await axios.post(
+      `${BASE}/playlists/${playlistId}/tracks`,
+      { uris: slice, position: i },
+      {
+        headers: {
+          ...authHeader(token),
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+  }
+};
