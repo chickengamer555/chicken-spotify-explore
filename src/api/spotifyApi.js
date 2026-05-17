@@ -155,12 +155,15 @@ export const getMyPlaylists = async (token) => {
 
 export const getPlaylistTrackIds = async (token, playlistId, playlistName) => {
   const ids = new Set();
-  let next = `${BASE}/playlists/${playlistId}/tracks?limit=100&fields=items(track(id)),next`;
+  // Feb 2026 Spotify migration: /tracks endpoint removed, replaced with /items.
+  // Response shape: items[].track → items[].item.
+  let next = `${BASE}/playlists/${playlistId}/items?limit=100&fields=items(item(id)),next`;
   while (next) {
     try {
       const res = await axios.get(next, { headers: authHeader(token) });
-      for (const item of res.data.items) {
-        if (item && item.track && item.track.id) ids.add(item.track.id);
+      for (const entry of res.data.items) {
+        const t = entry && (entry.item || entry.track); // tolerate both shapes
+        if (t && t.id) ids.add(t.id);
       }
       next = res.data.next;
     } catch (e) {
@@ -299,8 +302,9 @@ export const createPlaylist = async (token, name, description = '') => {
 export const addTracksToPlaylist = async (token, playlistId, uris) => {
   for (let i = 0; i < uris.length; i += 100) {
     const slice = uris.slice(i, i + 100);
+    // Feb 2026 migration: /tracks → /items
     await axios.post(
-      `${BASE}/playlists/${playlistId}/tracks`,
+      `${BASE}/playlists/${playlistId}/items`,
       { uris: slice, position: i },
       {
         headers: {
