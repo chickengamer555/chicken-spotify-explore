@@ -2,7 +2,7 @@ import * as spotify from './api/spotifyApi';
 import * as lastfm from './api/lastfmApi';
 
 const SIMILAR_PER_SEED = 30;
-const CONCURRENCY = 6;
+const CONCURRENCY = 12;
 
 const poolCapFor = (targetCount, overfetch) =>
   Math.ceil(targetCount * (overfetch ? 2.0 : 1.15));
