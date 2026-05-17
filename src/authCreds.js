@@ -6,7 +6,7 @@ const computeRedirect = () => {
 };
 
 export const authCreds = {
-  client_id: 'ab928d947ebb4ec9b02d8834a0e15a99',
+  client_id: '97feca4ae7384a6b8416522aeee99c12',
   get redirect_uri() {
     return computeRedirect();
   },
