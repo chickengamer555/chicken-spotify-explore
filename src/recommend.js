@@ -4,7 +4,7 @@ import * as lastfm from './api/lastfmApi';
 const TARGET = 50;
 const POOL_CAP = 80;
 const SIMILAR_PER_SEED = 30;
-const CONCURRENCY = 12;
+const CONCURRENCY = 4;
 
 const pLimit = (max) => {
   let active = 0;

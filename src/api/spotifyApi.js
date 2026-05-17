@@ -49,31 +49,43 @@ const logFirstSearchError = (where, e) => {
   console.warn(`[spotifyApi.${where}] first error — status=${status}`, e && e.response && e.response.data);
 };
 
-export const searchTrackByArtist = async (token, artistName) => {
-  try {
-    const res = await axios.get(`${BASE}/search`, {
-      headers: authHeader(token),
-      params: { q: `artist:"${artistName}"`, type: 'track', limit: 1 },
-    });
-    return res.data.tracks.items[0] || null;
-  } catch (e) {
-    logFirstSearchError('searchTrackByArtist', e);
-    return null;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const searchWithRetry = async (token, params, where) => {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await axios.get(`${BASE}/search`, {
+        headers: authHeader(token),
+        params,
+      });
+      return res.data.tracks.items[0] || null;
+    } catch (e) {
+      const status = e && e.response && e.response.status;
+      if (status === 429 && attempt === 0) {
+        const retryAfter = parseInt((e.response.headers && e.response.headers['retry-after']) || '2', 10);
+        await sleep(Math.min(retryAfter, 8) * 1000);
+        continue;
+      }
+      logFirstSearchError(where, e);
+      return null;
+    }
   }
+  return null;
 };
 
-export const searchExactTrack = async (token, artist, track) => {
-  try {
-    const res = await axios.get(`${BASE}/search`, {
-      headers: authHeader(token),
-      params: { q: `track:"${track}" artist:"${artist}"`, type: 'track', limit: 1 },
-    });
-    return res.data.tracks.items[0] || null;
-  } catch (e) {
-    logFirstSearchError('searchExactTrack', e);
-    return null;
-  }
-};
+export const searchTrackByArtist = (token, artistName) =>
+  searchWithRetry(
+    token,
+    { q: `artist:"${artistName}"`, type: 'track', limit: 1 },
+    'searchTrackByArtist'
+  );
+
+export const searchExactTrack = (token, artist, track) =>
+  searchWithRetry(
+    token,
+    { q: `track:"${track}" artist:"${artist}"`, type: 'track', limit: 1 },
+    'searchExactTrack'
+  );
 
 export const getTracksByIds = async (token, ids) => {
   if (!ids || ids.length === 0) return [];
