@@ -197,7 +197,24 @@ export const getMySavedAlbumTrackIds = async (token) => {
 };
 
 export const getAllMyPlaylistTrackIds = async (token, onProgress) => {
-  const playlists = await getMyPlaylists(token);
+  // Fetch current user id so we only read playlists we own (others 403)
+  let myId = null;
+  try {
+    const meRes = await axios.get(`${BASE}/me`, { headers: authHeader(token) });
+    myId = meRes.data && meRes.data.id;
+  } catch {}
+
+  const allPlaylists = await getMyPlaylists(token);
+  // Spotify 403s on tracks from playlists owned by other users (followed playlists, collab where you aren't collaborator).
+  // Filter to playlists owned by current user OR explicitly collaborative.
+  const playlists = allPlaylists.filter(
+    (p) => (myId && p.owner && p.owner.id === myId) || p.collaborative === true
+  );
+  const skipped = allPlaylists.length - playlists.length;
+  if (skipped > 0) {
+    console.log(`[skip-songs] skipping ${skipped} playlist(s) not owned by you (would 403)`);
+  }
+
   const ids = new Set();
 
   // Always include Liked Songs and Saved Albums — these are NOT in /me/playlists
