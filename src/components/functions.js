@@ -4,10 +4,16 @@ import ArtistSearch from './artistSearch';
 import TrackSearch from './trackSearch';
 import Loading from './loading';
 
+const ExploreCard = ({ eyebrow, headline, onClick }) => (
+  <button className="explore-card" onClick={onClick}>
+    <span className="explore-card__eyebrow">{eyebrow}</span>
+    <span className="explore-card__headline">{headline}</span>
+    <span className="explore-card__chevron" aria-hidden="true">→</span>
+  </button>
+);
+
 export default function Functions({
   token,
-  excludeOwned,
-  onExcludeOwnedChange,
   onExploreArtists,
   onExploreTracks,
   onSelectedArtists,
@@ -68,17 +74,21 @@ export default function Functions({
   const inputsEmpty = !artists && !tracks;
 
   return (
-    <div className="results">
-      <div className="funcs">
+    <div className="functions">
+      <div className="search-row">
         <input
+          className="search-input"
           onChange={(e) => handleArtistInput(e.target)}
-          placeholder="pick at most 5 artists.."
+          placeholder="pick at most 5 artists"
           ref={artistInput}
         />
-        {searching ? <Loading /> : <span>OR</span>}
+        <span className="or-divider">
+          {searching ? <Loading variant="bars" /> : <span className="or-divider__text">or</span>}
+        </span>
         <input
+          className="search-input"
           onChange={(e) => handleTrackInput(e.target)}
-          placeholder="pick at most 5 tracks.."
+          placeholder="pick at most 5 tracks"
           ref={trackInput}
         />
       </div>
@@ -97,32 +107,12 @@ export default function Functions({
       </Fragment>
 
       {inputsEmpty ? (
-        <Fragment>
-          <div className="funcs">
-            <button onClick={() => onExploreArtists('medium_term')}>
-              Explore by Recent Top Artists
-            </button>
-            <button onClick={() => onExploreTracks('medium_term')}>
-              Explore by Recent Top Tracks
-            </button>
-          </div>
-          <div className="funcs">
-            <button onClick={() => onExploreArtists('long_term')}>
-              Explore by All-Time Top Artists
-            </button>
-            <button onClick={() => onExploreTracks('long_term')}>
-              Explore by All-Time Top Tracks
-            </button>
-          </div>
-          <label className="exclude-toggle">
-            <input
-              type="checkbox"
-              checked={excludeOwned}
-              onChange={(e) => onExcludeOwnedChange(e.target.checked)}
-            />
-            <span>Skip songs already in my playlists</span>
-          </label>
-        </Fragment>
+        <div className="explore-grid">
+          <ExploreCard eyebrow="RECENT" headline="Top Artists" onClick={() => onExploreArtists('medium_term')} />
+          <ExploreCard eyebrow="RECENT" headline="Top Tracks" onClick={() => onExploreTracks('medium_term')} />
+          <ExploreCard eyebrow="ALL-TIME" headline="Top Artists" onClick={() => onExploreArtists('long_term')} />
+          <ExploreCard eyebrow="ALL-TIME" headline="Top Tracks" onClick={() => onExploreTracks('long_term')} />
+        </div>
       ) : null}
     </div>
   );

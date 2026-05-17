@@ -52,14 +52,13 @@ const TrackRow = ({ track, currentPlayingId, setCurrentPlayingId }) => {
     }
   };
 
-  // If another track started playing, pause ours
   if (isPlaying === false && status === 'playing' && currentPlayingId !== track.id) {
     if (audioRef.current && !audioRef.current.paused) audioRef.current.pause();
     setStatus('ready');
   }
 
   const overlay = (() => {
-    if (status === 'loading') return '⏳';
+    if (status === 'loading') return '…';
     if (status === 'none') return '✕';
     if (isPlaying) return '⏸';
     return '▶';
@@ -70,22 +69,27 @@ const TrackRow = ({ track, currentPlayingId, setCurrentPlayingId }) => {
       ? (track.album.images[2] || track.album.images[0]).url
       : null;
 
+  const rowClass = 'track-row' + (isPlaying ? ' track-row--playing' : '');
+
   return (
-    <div className="track-info">
-      <li className="art preview-clickable" onClick={handleClick} title={status === 'none' ? 'No preview available' : ''}>
-        {albumImg ? <img alt="album art" src={albumImg} /> : <div className="art-placeholder" />}
-        <span className={'preview-overlay status-' + status}>{overlay}</span>
-      </li>
-      <li className="name">
-        {track.name}
-        <span>
+    <div className={rowClass}>
+      <button
+        type="button"
+        className={'track-art status-' + status}
+        onClick={handleClick}
+        title={status === 'none' ? 'No preview available' : 'Play preview'}
+      >
+        {albumImg ? <img alt="" src={albumImg} /> : <span className="track-art__placeholder" />}
+        <span className="track-art__overlay">{overlay}</span>
+      </button>
+      <div className="track-meta">
+        <span className="track-meta__name">{track.name}</span>
+        <span className="track-meta__artists">
           {track.artists.map((item, index) => (index ? ', ' : '') + item.name)}
         </span>
-        <span className="album">{track.album.name}</span>
-      </li>
-      <li className="duration">
-        <span>{formatDuration(track.duration_ms)}</span>
-      </li>
+        <span className="track-meta__album">{track.album.name}</span>
+      </div>
+      <span className="track-duration">{formatDuration(track.duration_ms)}</span>
       {url ? (
         <audio
           ref={audioRef}
@@ -106,27 +110,29 @@ export default function Tracks({ data, onBack, onCreatePlaylist }) {
   if (!data) return null;
 
   return (
-    <div className="results">
-      <div className="funcs">
-        <button onClick={onBack}>Go back</button>
-        <button onClick={onCreatePlaylist}>Create a Playlist</button>
+    <div className="tracks-view">
+      <div className="tracks-actions">
+        <button className="btn-secondary" onClick={onBack}>← Go back</button>
+        <button className="btn-secondary btn-secondary--magenta" onClick={onCreatePlaylist}>
+          Create a Playlist
+        </button>
       </div>
-      <div className="tracks">
-        <ul>
-          {data.tracks.map((track) => (
-            <Fragment key={track.id}>
-              <TrackRow
-                track={track}
-                currentPlayingId={currentPlayingId}
-                setCurrentPlayingId={setCurrentPlayingId}
-              />
-            </Fragment>
-          ))}
-        </ul>
+      <div className="tracks-list">
+        {data.tracks.map((track) => (
+          <Fragment key={track.id}>
+            <TrackRow
+              track={track}
+              currentPlayingId={currentPlayingId}
+              setCurrentPlayingId={setCurrentPlayingId}
+            />
+          </Fragment>
+        ))}
       </div>
-      <div className="funcs">
-        <button onClick={onBack}>Go back</button>
-        <button onClick={onCreatePlaylist}>Create a Playlist</button>
+      <div className="tracks-actions">
+        <button className="btn-secondary" onClick={onBack}>← Go back</button>
+        <button className="btn-secondary btn-secondary--magenta" onClick={onCreatePlaylist}>
+          Create a Playlist
+        </button>
       </div>
     </div>
   );

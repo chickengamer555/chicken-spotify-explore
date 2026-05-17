@@ -3,7 +3,7 @@ import './content/css/App.scss';
 import authHelpers from './authHelpers';
 import * as spotifyApi from './api/spotifyApi';
 import * as recommend from './recommend';
-import Header from './components/header';
+import TopBar from './components/topBar';
 import Result from './components/result';
 import Login from './components/login';
 import Loading from './components/loading';
@@ -34,14 +34,26 @@ function App() {
     authHelpers.logout();
     setToken('');
     setData(null);
+    setExcludeOwned(false);
   };
 
   const fetchExcludeSet = async () => {
     if (!excludeOwned) return new Set();
     setLoadingMsg('Loading your playlists…');
-    return await spotifyApi.getAllMyPlaylistTrackIds(token, (done, total) => {
-      setLoadingMsg(`Loading your playlists (${done}/${total})…`);
-    });
+    try {
+      return await spotifyApi.getAllMyPlaylistTrackIds(token, (done, total) => {
+        setLoadingMsg(`Loading your playlists (${done}/${total})…`);
+      });
+    } catch (e) {
+      const status = e.response && e.response.status;
+      if (status === 403 || status === 401) {
+        toast.error('Re-login required to read your playlists — toggle disabled');
+      } else {
+        toast.error('Could not load your playlists — continuing without exclusions');
+      }
+      setExcludeOwned(false);
+      return new Set();
+    }
   };
 
   const applyExclusion = (tracks, excludeIds) => {
@@ -144,8 +156,8 @@ function App() {
     setLoading(true);
     setLoadingMsg('Creating playlist…');
     try {
-      const name = `Explore Spotify · ${new Date().toLocaleDateString()}`;
-      const playlist = await spotifyApi.createPlaylist(token, name, 'Made by Explore Spotify');
+      const name = `Explore · ${new Date().toLocaleDateString()}`;
+      const playlist = await spotifyApi.createPlaylist(token, name, 'Made by Explore');
       setLoadingMsg('Adding tracks…');
       await spotifyApi.addTracksToPlaylist(token, playlist.id, data.tracks.map((t) => t.uri));
       toast.success('Playlist created!');
@@ -163,6 +175,11 @@ function App() {
 
   return (
     <div className="page-container">
+      <div className="aurora" aria-hidden="true">
+        <span className="aurora__blob aurora__blob--cyan" />
+        <span className="aurora__blob aurora__blob--magenta" />
+      </div>
+
       <ToastContainer
         position="top-right"
         autoClose={4000}
@@ -175,36 +192,35 @@ function App() {
         pauseOnFocusLoss={false}
         theme="dark"
       />
-      <div className="top">
-        <Header title="Explore" />
-        <Login token={token} />
-        {token ? (
-          <button className="top-logout" onClick={handleLogout}>&gt; log out</button>
-        ) : null}
-      </div>
-      <div className="main">
-        <div className="results-container">
-          {loading ? (
-            <div className="loading-overlay">
-              <Loading />
-              <p className="loading-msg">{loadingMsg}</p>
-            </div>
-          ) : token ? (
-            <Result
-              token={token}
-              data={data}
-              excludeOwned={excludeOwned}
-              onExcludeOwnedChange={setExcludeOwned}
-              onExploreArtists={handleExploreArtists}
-              onExploreTracks={handleExploreTracks}
-              onSelectedArtists={handleSelectedArtists}
-              onSelectedTracks={handleSelectedTracks}
-              onCreatePlaylist={handleCreatePlaylist}
-              onBack={handleBack}
-            />
-          ) : null}
-        </div>
-      </div>
+
+      <TopBar
+        authed={!!token}
+        excludeOwned={excludeOwned}
+        onExcludeOwnedChange={setExcludeOwned}
+        onLogout={handleLogout}
+      />
+
+      <main className="page-main">
+        {!token ? (
+          <Login token={token} />
+        ) : loading ? (
+          <div className="loading-overlay">
+            <Loading />
+            <p className="loading-msg">{loadingMsg}</p>
+          </div>
+        ) : (
+          <Result
+            token={token}
+            data={data}
+            onExploreArtists={handleExploreArtists}
+            onExploreTracks={handleExploreTracks}
+            onSelectedArtists={handleSelectedArtists}
+            onSelectedTracks={handleSelectedTracks}
+            onCreatePlaylist={handleCreatePlaylist}
+            onBack={handleBack}
+          />
+        )}
+      </main>
     </div>
   );
 }

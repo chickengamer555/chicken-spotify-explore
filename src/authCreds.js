@@ -12,7 +12,7 @@ export const authCreds = {
   },
   auth_endpoint: 'https://accounts.spotify.com/authorize',
   token_endpoint: 'https://accounts.spotify.com/api/token',
-  scope: 'user-read-private user-top-read playlist-modify-private playlist-modify-public',
+  scope: 'user-read-private user-top-read playlist-modify-private playlist-modify-public playlist-read-private playlist-read-collaborative',
 };
 
 export const lastfmCreds = {
