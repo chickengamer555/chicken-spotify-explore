@@ -86,15 +86,14 @@ function App() {
       return { tracks: filtered, rawCount: probe.tracks.length };
     }
 
-    // Fall back to Last.fm pipeline
-    const raw = await recommend.runFromArtists(
+    // Fall back to Last.fm pipeline. Exclusion happens DURING the loop now.
+    const tracks = await recommend.runFromArtists(
       token,
       seeds,
       (done, total) => setLoadingMsg(`Finding similar tracks (${done}/${total})…`),
-      { targetCount: resultCount, overfetch: excludeOwned }
+      { targetCount: resultCount, overfetch: excludeOwned, excludeIds }
     );
-    const tracks = applyExclusion(raw, excludeIds);
-    return { tracks, rawCount: raw.length };
+    return { tracks, rawCount: tracks.length };
   };
 
   const runTracksFlow = async (seeds) => {
@@ -110,14 +109,13 @@ function App() {
       return { tracks: filtered, rawCount: probe.tracks.length };
     }
 
-    const raw = await recommend.runFromTracks(
+    const tracks = await recommend.runFromTracks(
       token,
       seeds,
       (done, total) => setLoadingMsg(`Finding similar tracks (${done}/${total})…`),
-      { targetCount: resultCount, overfetch: excludeOwned }
+      { targetCount: resultCount, overfetch: excludeOwned, excludeIds }
     );
-    const tracks = applyExclusion(raw, excludeIds);
-    return { tracks, rawCount: raw.length };
+    return { tracks, rawCount: tracks.length };
   };
 
   const handleApiError = (where, e) => {
