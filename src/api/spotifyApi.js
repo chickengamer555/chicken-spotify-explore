@@ -41,6 +41,14 @@ export const searchTrack = async (token, q, limit = 24) => {
   return res.data.tracks.items;
 };
 
+let firstSearchErrorLogged = false;
+const logFirstSearchError = (where, e) => {
+  if (firstSearchErrorLogged) return;
+  firstSearchErrorLogged = true;
+  const status = e && e.response && e.response.status;
+  console.warn(`[spotifyApi.${where}] first error — status=${status}`, e && e.response && e.response.data);
+};
+
 export const searchTrackByArtist = async (token, artistName) => {
   try {
     const res = await axios.get(`${BASE}/search`, {
@@ -48,7 +56,8 @@ export const searchTrackByArtist = async (token, artistName) => {
       params: { q: `artist:"${artistName}"`, type: 'track', limit: 1 },
     });
     return res.data.tracks.items[0] || null;
-  } catch {
+  } catch (e) {
+    logFirstSearchError('searchTrackByArtist', e);
     return null;
   }
 };
@@ -60,7 +69,8 @@ export const searchExactTrack = async (token, artist, track) => {
       params: { q: `track:"${track}" artist:"${artist}"`, type: 'track', limit: 1 },
     });
     return res.data.tracks.items[0] || null;
-  } catch {
+  } catch (e) {
+    logFirstSearchError('searchExactTrack', e);
     return null;
   }
 };

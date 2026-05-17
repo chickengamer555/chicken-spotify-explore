@@ -1,6 +1,13 @@
 import axios from 'axios';
 import { lastfmCreds } from '../authCreds';
 
+let firstErrorLogged = false;
+const logFirstError = (where, e) => {
+  if (firstErrorLogged) return;
+  firstErrorLogged = true;
+  console.warn(`[lastfmApi.${where}] first error`, e && e.message, e && e.response && e.response.data);
+};
+
 const call = async (params) => {
   const res = await axios.get(lastfmCreds.endpoint, {
     params: {
@@ -18,7 +25,8 @@ export const getSimilarArtists = async (artistName, limit = 30) => {
     const data = await call({ method: 'artist.getsimilar', artist: artistName, limit });
     const arr = (data && data.similarartists && data.similarartists.artist) || [];
     return arr.map((a) => a.name).filter(Boolean);
-  } catch {
+  } catch (e) {
+    logFirstError('getSimilarArtists', e);
     return [];
   }
 };
@@ -35,7 +43,8 @@ export const getSimilarTracks = async (artistName, trackName, limit = 30) => {
     return arr
       .map((t) => ({ artist: t.artist && t.artist.name, track: t.name }))
       .filter((x) => x.artist && x.track);
-  } catch {
+  } catch (e) {
+    logFirstError('getSimilarTracks', e);
     return [];
   }
 };

@@ -73,21 +73,29 @@ function App() {
   const runArtistsFlow = async (seeds) => {
     const excludeIds = await fetchExcludeSet();
     setLoadingMsg('Finding similar tracks (0/?)…');
-    let tracks = await recommend.runFromArtists(token, seeds, (done, total) => {
+    const raw = await recommend.runFromArtists(token, seeds, (done, total) => {
       setLoadingMsg(`Finding similar tracks (${done}/${total})…`);
     });
-    tracks = applyExclusion(tracks, excludeIds);
-    return tracks;
+    const tracks = applyExclusion(raw, excludeIds);
+    return { tracks, rawCount: raw.length };
   };
 
   const runTracksFlow = async (seeds) => {
     const excludeIds = await fetchExcludeSet();
     setLoadingMsg('Finding similar tracks (0/?)…');
-    let tracks = await recommend.runFromTracks(token, seeds, (done, total) => {
+    const raw = await recommend.runFromTracks(token, seeds, (done, total) => {
       setLoadingMsg(`Finding similar tracks (${done}/${total})…`);
     });
-    tracks = applyExclusion(tracks, excludeIds);
-    return tracks;
+    const tracks = applyExclusion(raw, excludeIds);
+    return { tracks, rawCount: raw.length };
+  };
+
+  const handleEmptyResult = (rawCount) => {
+    if (rawCount === 0) {
+      toast.error('No recommendations found — try a different seed');
+    } else {
+      toast.error(`All ${rawCount} recommendations were already in your playlists`);
+    }
   };
 
   const handleExploreArtists = async (range) => {
@@ -97,10 +105,11 @@ function App() {
     try {
       const seeds = await spotifyApi.getTopArtists(token, range);
       if (!seeds.length) return toast.error('No top artists found for this time range');
-      const tracks = await runArtistsFlow(seeds);
-      if (!tracks.length) return toast.error('No recommendations found (after exclusions)');
+      const { tracks, rawCount } = await runArtistsFlow(seeds);
+      if (!tracks.length) return handleEmptyResult(rawCount);
       setData({ tracks, seeds: seeds.map((s) => ({ id: s.id, type: 'artist', name: s.name })) });
     } catch (e) {
+      console.error('handleExploreArtists', e);
       toast.error('Something went wrong: ' + (e.message || 'unknown'));
     } finally {
       setLoading(false);
@@ -115,10 +124,11 @@ function App() {
     try {
       const seeds = await spotifyApi.getTopTracks(token, range);
       if (!seeds.length) return toast.error('No top tracks found for this time range');
-      const tracks = await runTracksFlow(seeds);
-      if (!tracks.length) return toast.error('No recommendations found (after exclusions)');
+      const { tracks, rawCount } = await runTracksFlow(seeds);
+      if (!tracks.length) return handleEmptyResult(rawCount);
       setData({ tracks, seeds: seeds.map((s) => ({ id: s.id, type: 'track', name: s.name })) });
     } catch (e) {
+      console.error('handleExploreTracks', e);
       toast.error('Something went wrong: ' + (e.message || 'unknown'));
     } finally {
       setLoading(false);
@@ -132,10 +142,11 @@ function App() {
     setLoadingMsg('Loading selected artists…');
     try {
       const seeds = await spotifyApi.getArtistsByIds(token, ids);
-      const tracks = await runArtistsFlow(seeds);
-      if (!tracks.length) return toast.error('No recommendations found (after exclusions)');
+      const { tracks, rawCount } = await runArtistsFlow(seeds);
+      if (!tracks.length) return handleEmptyResult(rawCount);
       setData({ tracks, seeds: seeds.map((s) => ({ id: s.id, type: 'artist', name: s.name })) });
     } catch (e) {
+      console.error('handleSelectedArtists', e);
       toast.error('Something went wrong: ' + (e.message || 'unknown'));
     } finally {
       setLoading(false);
@@ -149,10 +160,11 @@ function App() {
     setLoadingMsg('Loading selected tracks…');
     try {
       const seeds = await spotifyApi.getTracksByIds(token, ids);
-      const tracks = await runTracksFlow(seeds);
-      if (!tracks.length) return toast.error('No recommendations found (after exclusions)');
+      const { tracks, rawCount } = await runTracksFlow(seeds);
+      if (!tracks.length) return handleEmptyResult(rawCount);
       setData({ tracks, seeds: seeds.map((s) => ({ id: s.id, type: 'track', name: s.name })) });
     } catch (e) {
+      console.error('handleSelectedTracks', e);
       toast.error('Something went wrong: ' + (e.message || 'unknown'));
     } finally {
       setLoading(false);
