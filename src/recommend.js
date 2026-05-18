@@ -1,8 +1,10 @@
 import * as spotify from './api/spotifyApi';
 import * as lastfm from './api/lastfmApi';
 
-const SIMILAR_PER_SEED = 50; // more candidates available when skip-songs is on
-const CONCURRENCY = 12;
+const SIMILAR_PER_SEED = 50;
+const CONCURRENCY = 3;
+const PER_CALL_GAP_MS = 120;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const poolCapFor = (targetCount, overfetch) =>
   Math.ceil(targetCount * (overfetch ? 4.0 : 1.15));
@@ -77,6 +79,7 @@ export const runFromArtists = async (token, seedArtists, onProgress, opts = defa
         if (tracks.length >= targetCount) stop = true;
       }
       if (onProgress) onProgress(done, total);
+      if (!stop && i < total) await sleep(PER_CALL_GAP_MS);
     }
   });
   await Promise.all(workers);
@@ -127,6 +130,7 @@ export const runFromTracks = async (token, seedTracks, onProgress, opts = defaul
         if (tracks.length >= targetCount) stop = true;
       }
       if (onProgress) onProgress(done, total);
+      if (!stop && i < total) await sleep(PER_CALL_GAP_MS);
     }
   });
   await Promise.all(workers);
